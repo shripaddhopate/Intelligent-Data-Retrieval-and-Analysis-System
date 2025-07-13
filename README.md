@@ -31,15 +31,9 @@
 
 ### 📦 Installation
 - 1️⃣ Clone the Repository
-bash
-Copy
-Edit
 git clone <repository-url>
 cd data-analysis-platform
 - 2️⃣ Create a Virtual Environment
-bash
-Copy
-Edit
 python -m venv venv
 ### For macOS/Linux:
 source venv/bin/activate
