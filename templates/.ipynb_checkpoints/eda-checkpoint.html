@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EDA Tool</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .btn-primary {
+            background: linear-gradient(90deg, #3b82f6, #60a5fa);
+            transition: background 0.3s ease, transform 0.2s ease;
+        }
+        .btn-primary:hover:not(:disabled) {
+            background: linear-gradient(90deg, #2563eb, #3b82f6);
+            transform: scale(1.05);
+        }
+        .btn-primary:disabled {
+            background: #d1d5db;
+            cursor: not-allowed;
+        }
+        .btn-secondary {
+            background: linear-gradient(90deg, #10b981, #34d399);
+            transition: background 0.3s ease, transform 0.2s ease;
+        }
+        .btn-secondary:hover:not(:disabled) {
+            background: linear-gradient(90deg, #059669, #10b981);
+            transform: scale(1.05);
+        }
+        .btn-secondary:disabled {
+            background: #d1d5db;
+            cursor: not-allowed;
+        }
+        .input-focus {
+            transition: border-color 0.3s ease, box-shadow 0.3s ease;
+        }
+        .input-focus:focus {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+        }
+        .fade-in {
+            animation: fadeIn 0.5s ease-in-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        select:disabled {
+            background-color: #f3f4f6;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen p-4 font-sans">
+    <div class="bg-white rounded-2xl shadow-xl p-8 max-w-4xl w-full">
+        <h1 class="text-3xl font-bold text-center text-gray-800 mb-6">Exploratory Data Analysis</h1>
+        <div class="form-section mb-6">
+            <form id="eda-form" onsubmit="handleEdaSubmit(event)">
+                <div class="mb-4">
+                    <label for="eda-file" class="block text-sm font-medium text-gray-700 mb-1">Upload CSV File</label>
+                    <input type="file" id="eda-file" accept=".csv" class="w-full p-3 border border-gray-300 rounded-lg input-focus" onchange="handleFileUpload(this)" required>
+                </div>
+                <div class="columns-container flex flex-col sm:flex-row gap-4 mb-4 hidden" id="columns-container">
+                    <div class="column-section w-full sm:w-1/2">
+                        <label for="categorical-select" class="block text-sm font-medium text-gray-700 mb-1">Categorical Features</label>
+                        <select id="categorical-select" class="w-full p-3 border border-gray-300 rounded-lg input-focus" disabled>
+                            <option value="">Select a column</option>
+                        </select>
+                    </div>
+                    <div class="column-section w-full sm:w-1/2">
+                        <label for="numerical-select" class="block text-sm font-medium text-gray-700 mb-1">Numerical Features</label>
+                        <select id="numerical-select" class="w-full p-3 border border-gray-300 rounded-lg input-focus" disabled>
+                            <option value="">Select a column</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="options-list mb-4 hidden" id="options-list">
+                    <div class="flex flex-col gap-2">
+                        <label class="flex items-center text-sm text-gray-700 cursor-pointer">
+                            <input type="radio" name="eda-option" value="show basic details" class="mr-2">
+                            Show Basic Details
+                        </label>
+                        <label class="flex items-center text-sm text-gray-700 cursor-pointer">
+                            <input type="radio" name="eda-option" value="show description" class="mr-2">
+                            Show Description
+                        </label>
+                        <label class="flex items-center text-sm text-gray-700 cursor-pointer">
+                            <input type="radio" name="eda-option" value="show null values" class="mr-2">
+                            Show Null Values
+                        </label>
+                    </div>
+                </div>
+                <div class="button-group flex flex-col sm:flex-row gap-4">
+                    <button type="button" class="btn-primary py-3 rounded-lg text-white font-semibold text-lg histogram" onclick="generatePlot('histogram')" disabled>Generate Histogram</button>
+                    <button type="button" class="btn-secondary py-3 rounded-lg text-white font-semibold text-lg frequency" onclick="generatePlot('frequency')" disabled>Generate Frequency Graph</button>
+                </div>
+                <button type="submit" class="btn-primary w-full py-3 rounded-lg text-white font-semibold text-lg mt-4" id="run-eda-btn" disabled>Run EDA</button>
+            </form>
+        </div>
+        <div class="output-section hidden fade-in" id="output-section">
+            <h2 class="text-xl font-semibold text-gray-800 mb-3">Output</h2>
+            <pre id="output" class="bg-gray-50 p-4 rounded-lg max-h-96 overflow-y-auto text-sm text-gray-700 border border-gray-200"></pre>
+            <img id="plot-output" class="max-w-full mt-4 border border-gray-200 rounded-lg hidden" onerror="this.classList.add('hidden'); document.getElementById('output').textContent += '\nError: Failed to load plot image.';">
+        </div>
+    </div>
+    <script>
+        let selectedFile = null;
+        let isSubmitting = false;
+
+        function handleFileUpload(input) {
+            selectedFile = input.files[0];
+            const columnsContainer = document.getElementById('columns-container');
+            const categoricalSelect = document.getElementById('categorical-select');
+            const numericalSelect = document.getElementById('numerical-select');
+            const optionsList = document.getElementById('options-list');
+            const histogramButton = document.querySelector('.histogram');
+            const frequencyButton = document.querySelector('.frequency');
+            const runEdaButton = document.getElementById('run-eda-btn');
+            const output = document.getElementById('output');
+            const outputSection = document.getElementById('output-section');
+            const plotOutput = document.getElementById('plot-output');
+
+            columnsContainer.classList.add('hidden');
+            optionsList.classList.add('hidden');
+            categoricalSelect.innerHTML = '<option value="">Select a column</option>';
+            numericalSelect.innerHTML = '<option value="">Select a column</option>';
+            categoricalSelect.disabled = true;
+            numericalSelect.disabled = true;
+            histogramButton.disabled = true;
+            frequencyButton.disabled = true;
+            runEdaButton.disabled = true;
+            outputSection.classList.add('hidden');
+            output.textContent = '';
+            plotOutput.classList.add('hidden');
+            document.getElementById('eda-form').querySelectorAll('input[name="eda-option"]').forEach(radio => radio.checked = false);
+
+            if (selectedFile) {
+                const formData = new FormData();
+                formData.append('file', selectedFile);
+
+                fetch('/api/run-eda', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(result => {
+                    if (result.error) {
+                        output.textContent = `Error: ${result.error}`;
+                        outputSection.classList.remove('hidden');
+                    } else if (result.columns) {
+                        const { categorical, numerical } = result.columns;
+                        categorical.forEach(col => {
+                            const option = document.createElement('option');
+                            option.value = col;
+                            option.textContent = col;
+                            categoricalSelect.appendChild(option);
+                        });
+                        numerical.forEach(col => {
+                            const option = document.createElement('option');
+                            option.value = col;
+                            option.textContent = col;
+                            numericalSelect.appendChild(option);
+                        });
+                        columnsContainer.classList.remove('hidden');
+                        optionsList.classList.remove('hidden');
+                        categoricalSelect.disabled = categorical.length === 0;
+                        numericalSelect.disabled = numerical.length === 0;
+                        frequencyButton.disabled = categorical.length === 0 || categoricalSelect.value === '';
+                        histogramButton.disabled = numerical.length === 0 || numericalSelect.value === '';
+                        output.textContent = `Uploaded file: ${selectedFile.name}\nSelect an EDA option or generate a plot.`;
+                        outputSection.classList.remove('hidden');
+                    }
+                })
+                .catch(error => {
+                    output.textContent = `Error: ${error.message}`;
+                    outputSection.classList.remove('hidden');
+                });
+            }
+        }
+
+        function generatePlot(type) {
+            if (isSubmitting || !selectedFile) return;
+            const categoricalSelect = document.getElementById('categorical-select');
+            const numericalSelect = document.getElementById('numerical-select');
+            const column = type === 'histogram' ? numericalSelect.value : categoricalSelect.value;
+            if (!column) {
+                document.getElementById('output').textContent = `Please select a ${type === 'histogram' ? 'numerical' : 'categorical'} column.`;
+                document.getElementById('output-section').classList.remove('hidden');
+                return;
+            }
+            submitEdaRequest(`${type} of ${column}`);
+        }
+
+        function handleEdaSubmit(event) {
+            event.preventDefault();
+            if (isSubmitting || !selectedFile) return;
+            const selectedOption = document.querySelector('input[name="eda-option"]:checked');
+            if (!selectedOption) {
+                document.getElementById('output').textContent = 'Please select an EDA option or generate a plot.';
+                document.getElementById('output-section').classList.remove('hidden');
+                return;
+            }
+            submitEdaRequest(selectedOption.value);
+        }
+
+        function submitEdaRequest(prompt) {
+            isSubmitting = true;
+            const histogramButton = document.querySelector('.histogram');
+            const frequencyButton = document.querySelector('.frequency');
+            const runEdaButton = document.getElementById('run-eda-btn');
+            histogramButton.disabled = true;
+            frequencyButton.disabled = true;
+            runEdaButton.disabled = true;
+            histogramButton.textContent = 'Processing...';
+            frequencyButton.textContent = 'Processing...';
+            runEdaButton.textContent = 'Processing...';
+
+            const formData = new FormData();
+            formData.append('file', selectedFile);
+            formData.append('prompt', prompt);
+
+            fetch('/api/run-eda', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(result => {
+                const output = document.getElementById('output');
+                const plotOutput = document.getElementById('plot-output');
+                if (result.error) {
+                    output.textContent = `Error: ${result.error}`;
+                    plotOutput.classList.add('hidden');
+                } else {
+                    output.textContent = result.data;
+                    if (result.plot) {
+                        const plotUrl = `/uploads/${result.plot}?t=${new Date().getTime()}`;
+                        plotOutput.src = plotUrl;
+                        plotOutput.classList.remove('hidden');
+                    } else {
+                        plotOutput.classList.add('hidden');
+                    }
+                }
+                document.getElementById('output-section').classList.remove('hidden');
+            })
+            .catch(error => {
+                document.getElementById('output').textContent = `Error: ${error.message}`;
+                document.getElementById('plot-output').classList.add('hidden');
+                document.getElementById('output-section').classList.remove('hidden');
+            })
+            .finally(() => {
+                isSubmitting = false;
+                const categoricalSelect = document.getElementById('categorical-select');
+                const numericalSelect = document.getElementById('numerical-select');
+                histogramButton.disabled = numericalSelect.disabled || numericalSelect.value === '';
+                frequencyButton.disabled = categoricalSelect.disabled || categoricalSelect.value === '';
+                runEdaButton.disabled = !document.querySelector('input[name="eda-option"]:checked');
+                histogramButton.textContent = 'Generate Histogram';
+                frequencyButton.textContent = 'Generate Frequency Graph';
+                runEdaButton.textContent = 'Run EDA';
+            });
+        }
+
+        document.getElementById('categorical-select').addEventListener('change', function() {
+            const frequencyButton = document.querySelector('.frequency');
+            frequencyButton.disabled = this.value === '' || this.disabled;
+        });
+
+        document.getElementById('numerical-select').addEventListener('change', function() {
+            const histogramButton = document.querySelector('.histogram');
+            histogramButton.disabled = this.value === '' || this.disabled;
+        });
+
+        document.getElementById('eda-form').addEventListener('change', function(e) {
+            if (e.target.name === 'eda-option') {
+                const runEdaButton = document.getElementById('run-eda-btn');
+                runEdaButton.disabled = !selectedFile || !document.querySelector('input[name="eda-option"]:checked');
+            }
+        });
+    </script>
+</body>
+</html>
